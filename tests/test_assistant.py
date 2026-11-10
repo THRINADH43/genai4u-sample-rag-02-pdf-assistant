@@ -1,7 +1,7 @@
 import unittest
 
 from pdf_assistant.answer import REFUSAL, FakeLLM, answer, check_citations
-from pdf_assistant.ingest import Chunk, chunk_text, clean, ingest_folder
+from pdf_assistant.ingest import Chunk, chunk_text, clean, ingest_folder, strip_repeated_lines
 from pdf_assistant.search import HashEmbedder, VectorIndex
 
 PAGES = {
@@ -22,6 +22,33 @@ class FakeFolder:
 class IngestTests(unittest.TestCase):
     def test_clean_joins_hyphenated_words_and_spaces(self):
         self.assertEqual(clean("certifi-\ncate   is\n needed"), "certificate is needed")
+
+    def test_repeated_headers_and_footers_are_removed(self):
+        pages = ["Acme HR\nLeave is 24 days.\nInternal", "Acme HR\nSick leave is 8 days.\nInternal",
+                 "Acme HR\nHolidays: 12.\nInternal"]
+        cleaned = strip_repeated_lines(pages)
+        self.assertEqual(cleaned[1].strip(), "Sick leave is 8 days.")
+        self.assertEqual(strip_repeated_lines(["One page only"]), ["One page only"])
+
+    def test_index_is_saved_and_reused(self):
+        import os
+        import tempfile
+        chunks = [Chunk("a.pdf", 1, "leave is 24 days")]
+
+        class CountingEmbedder(HashEmbedder):
+            calls = 0
+
+            def embed(self, texts):
+                CountingEmbedder.calls += 1
+                return super().embed(texts)
+
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "index.json")
+            VectorIndex.load_or_build(CountingEmbedder(), chunks, path)
+            VectorIndex.load_or_build(CountingEmbedder(), chunks, path)
+            self.assertEqual(CountingEmbedder.calls, 1)  # built once, loaded the second time
+            VectorIndex.load_or_build(CountingEmbedder(), chunks + [Chunk("b.pdf", 1, "new")], path)
+            self.assertEqual(CountingEmbedder.calls, 2)  # rebuilt after the PDFs changed
 
     def test_chunks_overlap(self):
         words = " ".join(str(i) for i in range(10))

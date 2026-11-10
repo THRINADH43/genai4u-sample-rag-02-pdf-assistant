@@ -12,7 +12,7 @@ from pdf_assistant.search import MiniLMEmbedder, VectorIndex
 def main():
     question = " ".join(sys.argv[1:])
     chunks = ingest_folder("pdfs")
-    index = VectorIndex(MiniLMEmbedder(), chunks)
+    index = VectorIndex.load_or_build(MiniLMEmbedder(), chunks)  # saved to index.json
     llm = GroqLLM() if os.environ.get("GROQ_API_KEY") else FakeLLM()
     reply, hits = answer(question, index, llm)
     print(reply)

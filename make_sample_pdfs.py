@@ -22,8 +22,13 @@ DOCS = {
 for name, pages in DOCS.items():
     pdf = FPDF()
     pdf.set_font("Helvetica", size=12)
-    for text in pages:
+    pdf.set_auto_page_break(False)  # keep the footer on the same page
+    for number, text in enumerate(pages, start=1):
         pdf.add_page()
+        pdf.cell(0, 8, "GenAI4U Sample Co. - HR policies")  # a header on every page
+        pdf.ln(12)
         pdf.multi_cell(0, 8, text)
+        pdf.set_y(-20)
+        pdf.cell(0, 8, "Internal use only")  # a footer on every page
     pdf.output(f"pdfs/{name}")
     print("wrote", name)

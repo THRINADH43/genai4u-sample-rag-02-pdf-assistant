@@ -2,7 +2,9 @@
 runs on CPU). Tests use HashEmbedder, which needs no download."""
 
 import hashlib
+import json
 import math
+import os
 import re
 
 
@@ -39,10 +41,27 @@ def cosine(a, b):
 
 
 class VectorIndex:
-    def __init__(self, embedder, chunks):
+    def __init__(self, embedder, chunks, vectors=None):
         self.embedder = embedder
         self.chunks = chunks
-        self.vectors = embedder.embed([c.text for c in chunks]) if chunks else []
+        if vectors is None:
+            vectors = embedder.embed([c.text for c in chunks]) if chunks else []
+        self.vectors = vectors
+
+    @classmethod
+    def load_or_build(cls, embedder, chunks, path="index.json"):
+        """Embedding is the slow part, so the vectors are saved once and reused. The saved index
+        is rebuilt only when the chunks change (a PDF was added, changed or removed)."""
+        key = hashlib.sha256(json.dumps([[c.file, c.page, c.text] for c in chunks]).encode()).hexdigest()
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                saved = json.load(f)
+            if saved.get("key") == key:
+                return cls(embedder, chunks, saved["vectors"])
+        index = cls(embedder, chunks)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"key": key, "vectors": index.vectors}, f)
+        return index
 
     def search(self, query, k=3):
         q = self.embedder.embed([query])[0]

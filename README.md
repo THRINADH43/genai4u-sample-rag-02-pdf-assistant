@@ -9,6 +9,7 @@ is not in the PDFs.
 ```
 pip install -r requirements.txt     # pypdf, sentence-transformers (CPU is fine), fpdf2
 python make_sample_pdfs.py          # creates the two sample PDFs in pdfs/ (already committed)
+cp .env.example .env              # or export GROQ_API_KEY=...; never commit the key
 GROQ_API_KEY=... python ask.py "How many days of sick leave do I get?"
 python ask.py "..."                 # without a key: the fake model, so it still runs
 python -m unittest discover -s tests -t .
@@ -33,12 +34,17 @@ I could not find this in the documents.
 ## How it works
 
 1. **Extract** (`pdf_assistant/ingest.py`): `pypdf` reads each page separately.
-2. **Clean:** remove soft hyphens, join words split across lines (`certifi-\ncate`), collapse spaces.
+2. **Clean:** remove repeated headers and footers (a first or last line found on more than half
+   of a file's pages, such as "GenAI4U Sample Co. - HR policies" and "Internal use only" in
+   the sample PDFs), remove soft hyphens, join words split across lines (`certifi-\ncate`),
+   and collapse spaces.
 3. **Chunk:** 60 words with 15 words of overlap, so a sentence cut at a boundary still appears
    whole in one chunk. Chunks never cross a page, so each has exactly one correct page number.
 4. **Search** (`pdf_assistant/search.py`): embeddings from `all-MiniLM-L6-v2`, a small local
    model (80 MB, runs on CPU, no API). Vectors are normalised, so cosine is a dot product.
-   Ties are broken by file and page, so results repeat exactly.
+   Ties are broken by file and page, so results repeat exactly. The vectors are saved to
+   `index.json` the first time and reused after that; the index is rebuilt only when the
+   chunks change. `index.json` is in `.gitignore`.
 5. **Answer** (`pdf_assistant/answer.py`):
    - If the best chunk scores below 0.30 similarity, refuse without calling the model.
    - Otherwise the prompt gives only the top 3 chunks, each labelled with its citation, and
@@ -50,6 +56,7 @@ I could not find this in the documents.
 
 `FakeLLM` answers with the source sentence that best matches the question, and
 `HashEmbedder` is a word-hash embedder, so tests are fast and offline. They cover cleaning,
+header and footer removal, building the index once and reusing it,
 chunk overlap, page numbers, a cited answer, refusal when nothing matches, rejecting an
 uncited answer, and the citation checker.
 

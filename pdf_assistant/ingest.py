@@ -24,6 +24,20 @@ def clean(text):
     return text.strip()
 
 
+def strip_repeated_lines(pages):
+    """Remove header and footer lines: a first or last line that appears on more than half of
+    a file's pages (like "Acme Ltd - Leave policy" or "Company confidential")."""
+    if len(pages) < 2:
+        return pages
+    counts = {}
+    for page in pages:
+        lines = [l.strip() for l in page.splitlines() if l.strip()]
+        for line in set(lines[:1] + lines[-1:]):
+            counts[line] = counts.get(line, 0) + 1
+    repeated = {line for line, n in counts.items() if n > len(pages) / 2}
+    return ["\n".join(l for l in page.splitlines() if l.strip() not in repeated) for page in pages]
+
+
 def chunk_text(text, size=60, overlap=15):
     """Split into chunks of `size` words with `overlap` words shared between neighbours,
     so a sentence cut at a boundary still appears whole in one chunk."""
@@ -50,7 +64,8 @@ def ingest_folder(folder, reader=read_pdf_pages, size=60, overlap=15):
     for name in sorted(os.listdir(folder)):
         if not name.lower().endswith(".pdf"):
             continue
-        for page_no, raw in enumerate(reader(os.path.join(folder, name)), start=1):
+        pages = strip_repeated_lines(reader(os.path.join(folder, name)))
+        for page_no, raw in enumerate(pages, start=1):
             text = clean(raw)
             for piece in chunk_text(text, size, overlap) if text else []:
                 chunks.append(Chunk(name, page_no, piece))
